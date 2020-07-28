@@ -1,0 +1,7 @@
+# Exclude list
+boot
+cache
+recovery
+system
+userdata
+vendor
