@@ -1,0 +1,111 @@
+#!/sbin/sh
+#XDA @FriendlyNeighborhoodShane
+
+#todo device check
+devices="i9082";
+#Disk to partition
+disk="/dev/block/mmcblk0";
+#   num     name    start   end     fs
+partarray="
+    18      CSC     138     238     ext4
+    19      System  238     1338    ext4
+    20      HIDDEN  1338    1438    ext4
+    21      Data    1438    7813    ext4
+";
+
+outfd="/proc/self/fd/$2";
+zipfile="$3";
+
+mount -o bind /dev/urandom /dev/random;
+
+ui_print() { echo -e "ui_print $1\nui_print" >> $outfd; }
+
+log() { echo "$1"; }
+
+abort() {
+  ui_print " ";
+  ui_print "!!! FATAL ERROR: $1";
+  sync;
+  ui_print " ";
+  ui_print "Installation failed!";
+  ui_print " ";
+  exit 1;
+}
+
+ui_print "                                ";
+ui_print " ===================================";
+ui_print " |  MinParted Device Repartitioner |";
+ui_print " |       By ShaneTheAwesome        |";
+ui_print " ===================================";
+
+for bin in awk dd echo grep mkdir; do
+  [ "$(which "$bin")" ] || abort "No $bin available";
+done;
+
+abi="$(getprop ro.product.cpu.abi)";
+case "$abi" in
+  arm64*|arm*)
+    arch=arm;
+  ;;
+  x86_64*|x86*)
+    arch=x86;
+  ;;
+  mips64*|mips*)
+    arch=mips;
+  ;;
+  *)
+    abort "Could not recognise architecture: $abi";
+  ;;
+esac;
+ui_print " ";
+ui_print "Bin arch detected: $arch";
+
+unzip -o "$zipfile" "parted-$arch" -d "/tmp" || abort "Could not extract parted";
+parted="/tmp/parted-$arch";
+[ -f "$parted" ] || abort "No parted for $arch found";
+chmod 0777 "$parted";
+"$parted" || abort "Parted errored out";
+
+delete_part() {
+  argpart="$1";
+  umount -f "$disk""$part" || abort "Unmounting partition $part failed";
+  "$parted" "$disk" rm "$argpart" || abort "Deleting partition $argpart failed";
+}
+make_part() {
+  argpart="$1"; argname="$2"; argstart="$3"; argend="$4"; argfs="$5";
+  "$parted" "$disk" mkpartfs primary "$argname" ext2 "$argstart" "$argend" || abort "Creating partition $argpart failed";
+  mke2fs -b 4096 -T "$argfs" "$disk""$argpart" || abort "Formatting partition $argpart failed";
+}
+
+ui_print " ";
+ui_print "Disk to partition: $disk";
+
+ui_print " ";
+ui_print "Unmounting and deleting partitions...";
+for part in $(echo "$partarray" | awk '{ print $1 }'); do
+  line="$(echo "$partarray" | grep "^[ \t]*$part")";
+  name="$(echo "$line" | awk '{ print $2 }')";
+  ui_print "  -- Partition $part - $name";
+  delete_part "$part";
+done;
+
+ui_print " ";
+ui_print "Creating and formatting new partitions...";
+for part in $(echo "$partarray" | awk '{ print $1 }'); do
+  line="$(echo "$partarray" | grep "^[ \t]*$part")";
+  name="$(echo "$line" | awk '{ print $2 }')";
+  start="$(echo "$line" | awk '{ print $3 }')";
+  end="$(echo "$line" | awk '{ print $4 }')";
+  fs="$(echo "$line" | awk '{ print $5 }')";
+  ui_print "  -- Partition $part - $name";
+  make_part "$part" "$name" "$start" "$end" "$fs";
+done;
+
+sync;
+
+ui_print " ";
+ui_print "Done!";
+ui_print "Now reboot to recovery.";
+ui_print "Join us on Telegram: @NoGooLag";
+ui_print " ";
+exit 0;

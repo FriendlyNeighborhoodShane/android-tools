@@ -1,0 +1,123 @@
+#!/sbin/sh
+# Minimal Flasher script
+# By FriendlyNeighborhoodShane
+# Based on work by osm0sis @ xda-developers (Thanks!)
+
+exec 3>&1;
+exec 1>&2;
+
+outfd="/proc/self/fd/$2";
+zipfile="$3";
+
+ps | grep zygote | grep -v grep >/dev/null && bootmode=true || bootmode=false;
+$bootmode || ps -A 2>/dev/null | grep zygote | grep -v grep >/dev/null && bootmode=true;
+
+$bootmode && ui_print() { echo "$1" >&3; } || ui_print() { echo -e "ui_print $1\nui_print" >> $outfd; }
+
+log() { echo "$1"; }
+
+$bootmode || mount -o bind /dev/urandom /dev/random;
+
+abort() {
+  ui_print " ";
+  ui_print "!!! FATAL ERROR: $1";
+  ui_print " ";
+  ui_print "Stopping installation...";
+  [ -d "$filedir" ] && rm -rf "$filedir";
+  sync;
+  ui_print " ";
+  ui_print "Installation failed!";
+  ui_print " ";
+  exit 1;
+}
+
+ui_print " ";
+ui_print "--            Minimal Zip Flasher           --";
+ui_print "--       To flash zips automatically        --";
+ui_print "--            By ShaneTheAwesome            --";
+modname="MinFlasher";
+
+$bootmode || mount /data;
+for bin in chmod echo find grep mkdir rm unzip; do
+  [ "$(which "$bin")" ] || abort "No $bin available";
+done;
+
+filedir="/dev/tmp/$modname";
+tmpzipdir="$filedir/tmp";
+moddir="/data/media/0/$modname";
+
+rm -rf "$filedir";
+mkdir -p "$filedir";
+
+ui_print " ";
+ui_print "Extracting...";
+unzip -oq "$zipfile" -d "$filedir/";
+
+case "$(basename "$zipfile")" in
+  *silent*|*Silent*|*SILENT*)
+    silent=yes;
+  ;;
+  *)
+    [ -f "$moddir/silent" ] || [ -f "$(dirname "$zipfile")/silent" ] && silent=yes;
+  ;;
+esac;
+
+for dir in "$filedir/Zips" "$($bootmode || echo "$(dirname "$zipfile")")" "$moddir"; do
+  [ -d "$dir" ] && [ "$(find "$dir" -maxdepth 1 -type f -name "*.zip")" ] && { zipdir="$dir"; break; }
+done;
+[ "$zipdir" ] || abort "No zips found to flash";
+
+ui_print " ";
+ui_print "Flashing zips from $zipdir...";
+
+find "$zipdir" -maxdepth 1 -type f -name "*.zip" | sort -f | while read -r zip; do
+
+  [ "$zip" ] || continue;
+  case "$(basename "$zip")" in "$zipfile") continue;; esac;
+
+  ui_print " ";
+  ui_print "-Flashing $(basename "$zip")";
+
+  [ -f "$zip" ] || { log "  !!Zip mysteriously vanished"; ui_print "  !!Installation failed"; continue; }
+  log "  --Zip file: $zip";
+
+  rm -rf "$tmpzipdir";
+  mkdir -p "$tmpzipdir";
+
+  unzip "$zip" -d "$tmpzipdir" "META-INF/com/google/android/*" || { log "  !!Zip could not be unzipped"; ui_print "  !!Installation failed"; continue; }
+
+  [ -f "$tmpzipdir/META-INF/com/google/android/update-binary" ] || { log "  !!Not a valid flashable zip"; ui_print "  !!Installation failed"; continue; }
+
+  [ "$(head -n1 "$tmpzipdir/META-INF/com/google/android/updater-script" | grep "MINFLASHER")" ] && { log "  !!It's a MinFlasher zip"; ui_print "  !!Installation failed"; continue; }
+
+  $bootmode && {
+    [ "$(head -n1 "$tmpzipdir/META-INF/com/google/android/updater-script" | grep "^#MAGISK")" ] || { log "  !!Not a Magisk zip"; ui_print "  !!Installation failed"; continue; }
+  }
+
+  chmod 755 "$tmpzipdir/META-INF/com/google/android/update-binary";
+  if [ "$silent" = "yes" ]; then
+    "$tmpzipdir/META-INF/com/google/android/update-binary" "3" "0" "$zip" >&2;
+  else
+    "$tmpzipdir/META-INF/com/google/android/update-binary" "3" "$(basename "$outfd")" "$zip" >&3;
+  fi;
+
+  ret=$?;
+  test "$ret" == 0 || { log "  !!Zip errored out with code: $ret"; ui_print "  !!Installation failed"; continue; }
+
+  log "  --Install successful";
+
+done;
+
+ui_print " ";
+ui_print "Flashing process complete";
+
+ui_print " ";
+ui_print "Cleaning up...";
+rm -rf "$filedir";
+sync;
+
+ui_print " ";
+ui_print "Done!";
+ui_print "Join us on Telegram: @NoGooLag";
+ui_print " ";
+exit 0;

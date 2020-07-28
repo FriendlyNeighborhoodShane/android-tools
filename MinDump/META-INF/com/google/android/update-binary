@@ -1,0 +1,135 @@
+#!/sbin/sh
+#XDA @FriendlyNeighborhoodShane
+
+exec 3>&1;
+exec 1>&2;
+
+outfd="/proc/self/fd/$2";
+zipfile="$3";
+
+ps | grep zygote | grep -v grep >/dev/null && bootmode=true || bootmode=false;
+$bootmode || ps -A 2>/dev/null | grep zygote | grep -v grep >/dev/null && bootmode=true;
+
+$bootmode || mount -o bind /dev/urandom /dev/random;
+
+$bootmode && ui_print() { echo "$1" >&3; } || ui_print() { echo -e "ui_print $1\nui_print" >> $outfd; }
+
+log() { echo "$1"; }
+
+ui_print "                                ";
+ui_print " ===================================";
+ui_print " |      MinDump Device Dumper      |";
+ui_print " |       By ShaneTheAwesome        |";
+ui_print " ===================================";
+modname=MinDump;
+
+for bb in /magisk/.core/busybox /sbin/.core/busybox /sbin/.magisk/busybox; do
+  [ -e "$bb" ] && magiskbb="$bb";
+done;
+[ "$magiskbb" ] && export PATH="$magiskbb:$PATH";
+for bin in cat chcon chmod chown dd echo grep ls mkdir ps rm sed; do
+  [ "$(which "$bin")" ] || { ui_print " "; ui_print "FATAL ERROR: No $bin available"; exit 1; }
+done;
+
+perm() {
+  uid="$1";
+  gid="$2";
+  dmod="$3";
+  fmod="$4";
+  permobject="$5";
+  [ -e "$permobject" ] || return 0;
+  chown -R $uid:$gid "$permobject" || chown -R $uid.$gid "$permobject";
+  find "$permobject" -type d -exec chmod $dmod {} +;
+  find "$permobject" -type f -exec chmod $fmod {} +;
+}
+
+$bootmode && dumpdir="/data/media/0/MinDump" || dumpdir="$(dirname "$zipfile")";
+ui_print " "
+ui_print "Using $dumpdir as dump directory";
+
+bootdevice="/dev/block/bootdevice/by-name";
+blockdevicea=/dev/block/platform/*/*/by-name;
+blockdeviceb=/dev/block/platform/*/by-name;
+if [ -e "$bootdevice" ]; then
+  targetdevice="$bootdevice";
+elif [ -e "$blockdevicea" ]; then
+  targetdevice="$blockdevicea";
+elif [ -e "$blockdeviceb" ]; then
+  targetdevice="$blockdeviceb";
+else
+  ui_print " ";
+  ui_print "FATAL ERROR: Could not find a target";
+  exit 1;
+fi;
+ui_print " "
+ui_print "Using $targetdevice as dump target";
+
+partlist="$(ls -1 "$targetdevice")";
+[ -f "$dumpdir/mindump-include.txt" ] || [ -f "$dumpdir/mindump-exclude.txt" ] || unzip -o "$zipfile" "mindump-exclude.txt" -d "$dumpdir" || { log " "; log "ERROR: Could not extract default config"; }
+[ -f "$dumpdir/mindump-include.txt" ] || [ -f "$dumpdir/mindump-exclude.txt" ] && {
+  ui_print " ";
+  [ -f "$dumpdir/mindump-include.txt" ] && {
+    ui_print "Processing include config...";
+    includelist="$(cat "$dumpdir/mindump-include.txt" | sed -e 's|\#.*||g' -e 's/[\#%&\`|*+=!@:;\t$^()?\[\]{}<>]/ /g')";
+  } || {
+    ui_print "Processing exclude config...";
+    excludelist="$(cat "$dumpdir/mindump-exclude.txt" | sed -e 's|\#.*||g' -e 's/[\#%&\`|*+=!@:;\t$^()?\[\]{}<>]/ /g')";
+  }
+  [ "$includelist" ] && {
+    new_partlist="";
+    for include in $includelist; do 
+      log "Including keyword $include";
+      new_partlist="$new_partlist $(echo "partlist" | grep -oi "[ ]*$include[ ]*")";
+    done;
+    partlist="$new_partlist";
+  }
+  [ "$excludelist" ] && {
+    new_partlist="$partlist";
+    for exclude in $excludelist; do 
+      log "Excluding keyword $exclude";
+      new_partlist="$(echo "$new_partlist" | sed "s|[ ]*$exclude[ ]*| |ig")";
+    done;
+    partlist="$new_partlist";
+  }
+  [ "$includelist" ] || [ "$excludelist" ] && {
+    partlist="$(echo "$partlist" | sed 's| |\n|g' | tr -s '\n' | sort -u | sed 's|^|  |g')
+";
+  }
+}
+[ "$partlist" ] || { ui_print " "; ui_print "Nothing left to dump after config"; exit 1; }
+
+
+case $(basename "$zipfile") in
+  *RESTORE*)
+    $bootmode && { ui_print " "; ui_print "Restore not possible while turned on!"; exit 1; }
+    ui_print " ";
+    ui_print "Restoring dumps...";
+    for part in $partlist; do
+      [ -e "$dumpdir/dumps/$part.img" ] || continue;
+      ui_print "  -- Partition: $part";
+      dd if="$dumpdir/dumps/$part.img" of="$targetdevice/$part" || { ui_print "    !! ERROR"; log "    !! dd error"; continue; }
+    done;
+  ;;
+  *)
+    ui_print " ";
+    ui_print "Dumping device...";
+    mkdir -p "$dumpdir/dumps";
+    for part in $partlist; do
+      ui_print "  -- Partition: $part";
+      [ -e "$targetdevice/$part" ] || { ui_print "    !! ERROR"; log "    !! Partition vanished"; continue; }
+      rm -rf "$dumpdir/dumps/$part.img";
+      dd if="$targetdevice/$part" of="$dumpdir/dumps/$part.img" || { ui_print "    !! ERROR"; log "    !! dd error"; continue; }
+      [ -f "$dumpdir/dumps/$part.img" ] || { ui_print "    !! ERROR"; log "    !! No result file"; continue; }
+    done;
+  ;;
+esac;
+
+[ -d "$dumpdir/dumps" ] && { perm 1023 1023 775 664 "$dumpdir/dumps"; chcon -hR 'u:object_r:media_rw_data_file:s0' "$dumpdir/dumps"; }
+
+sync;
+
+ui_print " ";
+ui_print "Done!";
+ui_print "Join us on Telegram: @NoGooLag";
+ui_print " ";
+exit 0;

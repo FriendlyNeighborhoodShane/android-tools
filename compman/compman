@@ -1,0 +1,271 @@
+# CompMan
+# A shell script with a terrible name
+# Also enables/disables app components
+# FriendlyNeighborhoodShane @ XDA
+
+echo " ";
+echo " >>> CompMan";
+echo " >>> By FriendlyNeighborhoodShane @ XDA";
+
+error() {
+  echo " ";
+  echo "!!!";
+  echo "FATAL ERROR: $1";
+  echo "!!!";
+  echo " ";
+  exit 1;
+}
+
+showhelp() {
+  echo "
+ShellBach Terminal App Data Backup Utility
+
+Usage: shellbach ACTION [-s DIR] [-u USER] PACKAGE [PACKAGE...]
+
+Where ACTION is
+  b|backup)
+    Backup the data for packages
+  r|restore)
+    Restore latest backup for packages
+  l|list)
+    List all apps matching packages
+    To check what apps will be affected
+
+and PACKAGEs are grep arguments that are matched against all user apps installed. Each input can match with multiple packagenames.
+For example, 'com' will match with com.google.android.gms, ma.com.bas and many more.
+
+Optional arguments:
+  -s|--storage)
+    DIR to store backup zips in
+    Default is /internal-storage/ShellBach
+  -u|--user)
+    USER number of user to backup/restore data for
+    Default is user 0, owner
+
+WARNING:
+Never backup or restore the terminal app you are running this script on. This includes all-matching inputs like '.' and '*'.
+";
+}
+
+disable_pkg() {
+  pm disable "$1" > /dev/null || return 1;
+}
+
+enable_pkg() {
+  pm enable "$1" > /dev/null || return 1;
+}
+
+#TODO
+stat_pkg() {
+  statpkg="$1";
+  echo "unknown";
+}
+
+disable_comp() {
+  pm disable "$1/$2" > /dev/null || return 1;
+}
+
+enable_comp() {
+  pm enable "$1/$2" > /dev/null || return 1;
+}
+
+list_comp() {
+  listpkg="$1";
+  state="";
+  pm dump "$listpkg" | while read line; do
+    case "$line" in
+      "Activity Resolver Table:"|"Receiver Resolver Table:"|"Service Resolver Table:")
+        state="cap";
+      ;;
+      [0-9a-z]*" $pkg/"*" filter "[0-9a-z]*)
+        [ "$state" = "cap" ] && echo "$(echo "$line" | awk '{ print $2 }' | sed "s|^$pkg/||g")";
+      ;;
+      [A-Z][a-z]*" Resolver Table:")
+        [ "$state" = "cap" ] && break || state="";
+      ;;
+      "Preferred Activities"*)
+        break;
+      ;;
+    esac;
+  done;
+}
+
+#TODO
+stat_comp() {
+  statpkg="$1";
+  echo "unknown";
+}
+
+[ "$(whoami)" == "root" ] || [ "$(whoami)" == "shell" ] || error "Run as root or ADB";
+
+pkgin="";
+compin="";
+blacklist="shared_prefs/com.google.android.gms.appid.xml";
+
+case "$1" in
+  d|disable)
+    action="backup";
+  ;;
+  e|enable)
+    action="restore";
+  ;;
+  l|list)
+    action="list";
+  ;;
+  clean)
+    action="clean";
+  ;;
+  unclean)
+    action="unclean";
+  ;;
+  h|help|-h|--help)
+    showhelp;
+    exit 0;
+  ;;
+  *)
+    error "No action given. Try $0 help";
+  ;;
+esac;
+shift 1;
+
+until [ ! "$1" ]; do
+  case "$1" in
+    -b|--blacklist)
+      [ "$2" ] || error "No backlist file given";
+      blacklist="$2";
+      shift 2;
+    ;;
+    -*)
+      error "Unrecognised option: $1. Try $0 help";
+    ;;
+    *)
+      [ "$pkgin" ] || { pkgin=$1; shift 1; continue; }
+      [ "$compin" ] || { compin=$1; shift 1; continue; }
+      error "Extra unneeded input: $1";
+    ;;
+  esac;
+done;
+
+pkglist="$(pm list packages -3 | sed "s|package:||g" | grep -Ei "$pkgin" | sort -u)";
+[ "$pkglist" ] || error "No packages match the input";
+
+if [ "$action" = "disable" ]; then
+  echo " ";
+  echo " - Disabling...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";
+    if [ "$compin" ]; then
+      comps="$(list_comp "$pkg" | grep -Ei "$compin" | sort -u)";
+      [ "$comps" ] || continue;
+      for comp in $comps; do
+        echo "   <> Disabling: $comp";
+        disable_comp "$pkg" "$comp";
+      done;
+    else
+      echo "   <> Disabling package";
+      disable_pkg "$pkg";
+    fi;
+    echo " >> Done!";
+  done;
+fi;
+
+if [ "$action" = "enable" ]; then
+  echo " ";
+  echo " - Enabling...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";
+    if [ "$compin" ]; then
+      comps="$(list_comp "$pkg" | grep -Ei "$compin" | sort -u)";
+      [ "$comps" ] || continue;
+      for comp in $comps; do
+        echo "   <> Enabling: $comp";
+        enable_comp "$pkg" "$comp";
+      done;
+    else
+      echo "   <> Enabling package";
+      enable_pkg "$pkg";
+    fi;
+    echo " >> Done!";
+  done;
+fi;
+
+if [ "$action" = "list" ]; then
+  echo " ";
+  echo " - Listing...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";
+    comps="$(list_comp "$pkg" | grep -Ei "$compin" | sort -u)";
+    [ "$comps" ] || continue;
+    for comp in $comps; do
+      echo "   <> Component: $comp";
+    done;
+    echo " >> Done!";
+  done;
+fi;
+
+if [ "$action" = "clean" ]; then
+  echo " ";
+  echo " - Cleaning...";
+  [ -f "$blacklist" ] || error "Blacklist $blacklist not found";
+  blacklist="$(cat "$blacklist" | sed 's|\n| |g')";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";   
+    complist="$(list_comp "$pkg" | grep -Ei "$compin" | sort -u | sed 's|\n| |g')";
+    for comp in $complist; do
+      echo "$blacklist" | grep -q " $comp " || continue;
+      echo "   <> Cleaning: $comp";
+      disable_comp "$pkg" "$comp";
+    done;
+    echo " >> Done!";
+  done;
+fi;
+
+if [ "$action" = "unclean" ]; then
+  echo " ";
+  echo " - Uncleaning...";
+  [ -f "$blacklist" ] || error "Blacklist $blacklist not found";
+  blacklist="$(cat "$blacklist" | sed 's|\n| |g')";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";   
+    complist="$(list_comp "$pkg" | grep -Ei "$compin" | sort -u | sed 's|\n| |g')";
+    for comp in $complist; do
+      echo "$blacklist" | grep -q " $comp " || continue;
+      echo "   <> Uncleaning: $comp";
+      enable_comp "$pkg" "$comp";
+    done;
+    echo " >> Done!";
+  done;
+fi;
+
+echo " "
+echo " - Done!";
+echo " ";
+
+exit 0;
+ blacklist="$(cat "$blacklist" | sed 's|\n| |g')";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " > Package: $pkg";   
+    for comptype in $comptypes; do
+      echo "   >> Component type: $comptype";
+      complist="$(list_comp "$pkg" "$comptype" | grep -Ei "$compin" | sort -u | sed 's|\n| |g')";
+      for comp in $complist; do
+        echo "$blacklist" | grep -q " $comp " || continue;
+        echo "     <> Uncleaning: $comp";
+        enable_comp "$pkg" "$comp";
+      done;
+    done;
+    echo "   >> Done!";
+  done;
+fi;
+
+echo " "
+echo " - Done!";
+echo " ";
+
+exit 0;

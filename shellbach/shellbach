@@ -1,0 +1,250 @@
+# ShellBach
+# A shell script with a terrible name
+# Also backs up app data
+# FriendlyNeighborhoodShane @ XDA
+
+echo " ";
+echo " >>> ShellBach";
+echo " >>> By FriendlyNeighborhoodShane @ XDA";
+
+error() {
+  echo " ";
+  echo "!!!";
+  echo "FATAL ERROR: $1";
+  echo "!!!";
+  echo " ";
+  exit 1;
+}
+
+showhelp() {
+  echo "
+ShellBach Terminal App Data Backup Utility
+
+Usage: shellbach ACTION [-s DIR] [-u USER] PACKAGE [PACKAGE...]
+
+Where ACTION is
+  b|backup)
+    Backup the data for packages
+  r|restore)
+    Restore latest backup for packages
+  l|list)
+    List all apps matching packages
+    To check what apps will be affected
+
+and PACKAGEs are grep arguments that are matched against all user apps installed. Each input can match with multiple packagenames.
+For example, 'com' will match with com.google.android.gms, ma.com.bas and many more.
+
+Optional arguments:
+  -s|--storage)
+    DIR to store backups in
+    Default is /internal-storage/ShellBach
+  -u|--user)
+    USER number of user to backup/restore data for
+    Default is user 0, owner
+
+WARNING:
+Never backup or restore the terminal app you are running this script on. This includes all-matching inputs like '.' and '*'.
+";
+}
+
+disable_pkg() {
+  pm disable "$1" > /dev/null || return 1;
+}
+
+enable_pkg() {
+  pm enable "$1" > /dev/null || return 1;
+}
+
+backup_data() {
+  pkgdir="$1";
+  bkptar="$2";
+  [ -d "$pkgdir" ] || return 1;
+  mkdir -p "$(dirname "$bkptar")" || return 1;
+  rm -rf "$bkptar";
+  tar -cz -f "$bkptar" -C "$pkgdir" "${excarr[@]}" . > /dev/null || return 1;
+}
+
+restore_data() {
+  bkptar="$1";
+  pkgdir="$2";
+  [ -d "$pkgdir" ] || return 1;
+  [ -f "$bkptar" ] || return 1;
+  rm -rf "$pkgdir"/*;
+  tar -xz -f "$bkptar" -C "$pkgdir" > /dev/null || return 1;
+}
+
+perm_pkg() {
+  pkgdir="$1";
+  [ -d "$pkgdir" ] || return 1;
+  pkguser="$(ls -ld "$pkgdir" | awk '{ print $3 }')";
+  uid="$(id -u $pkguser)";
+  [ "$uid" -gt 0 ] || return 1;
+  chown -R $uid:$uid "$pkgdir" > /dev/null;
+  restorecon -R "$pkgdir" > /dev/null 2> /dev/null;
+}
+
+[ "$(whoami)" == "root" ] || [ "$(whoami)" == "shell" ] || error "Run as root or ADB";
+
+user=0;
+input="";
+pkglist="";
+backupdir="/sdcard/ShellBach";
+backupnot=( "cache/*" "code_cache/*" "lib/*" "shared_prefs/com.google.android.gms.appid.xml" );
+excarr=(); for each in "${backupnot[@]}"; do
+  excarr=( "${excarr[@]}" "--exclude=$each" );
+done;
+
+case "$1" in
+  b|backup)
+    action="backup";
+  ;;
+  r|restore)
+    action="restore";
+  ;;
+  l|list)
+    action="list";
+  ;;
+  h|help|-h|--help)
+    showhelp;
+    exit 0;
+  ;;
+  *)
+    error "No action given. Try $0 help";
+  ;;
+esac;
+shift 1;
+
+until [ ! "$1" ]; do
+  case "$1" in
+    -s|--storage)
+      [ "$2" ] || error "No directory given for backup";
+      backupdir="$2";
+      shift 2;
+    ;;
+    -u|--user)
+      [ "$2" ] || error "No user given";
+      user="$2";
+      shift 2;
+    ;;
+    --)
+      shift 1;
+      break;
+    ;;
+    -*)
+      error "Unrecognised option: $1. Try $0 help";
+    ;;
+    *)
+      input="$input $1";
+      shift 1;
+    ;;
+  esac;
+done;
+input="$input $@";
+
+mkdir -p "$backupdir";
+[ -d "$backupdir" ] || error "Directory $backupdir could not be created";
+userexists="false";
+for userid in $(pm list users | sed "s|[{:}]| |g" | awk '{ print $2 }'); do
+  [ "$userid" = "$user" ] && { userexists="true"; break; }
+done;
+"$userexists" || error "Given user $user not found";
+[ "$input" ] || {
+  if [ "$action" = "list" ]; then
+    input=".";
+  else
+    error "No package names given";
+  fi;
+}
+if [ "$(whoami)" = "shell" ]; then
+  selfpkg="ADB";
+elif [ "$PREFIX" = "/data/data/com.termux/files/usr" ]; then
+  selfpkg="com.termux";
+else
+  selfpkg="jackpal.androidterm";  
+fi;
+
+for pattern in $input; do
+  pkglist="$pkglist
+$(pm list packages -3 --user "$user" | sed "s|package:||g" | grep -Ei "$pattern")
+";
+done;
+pkglist="$(echo "$pkglist" | sort -u)";
+[ "$pkglist" ] || error "No packages match the input";
+
+echo " ";
+echo " > Backup directory: $backupdir";
+echo " > Backup user: $user";
+echo " > Running program: $selfpkg";
+
+if [ "$action" = "backup" ]; then
+  echo " ";
+  echo " - Backing up...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " - Package: $pkg";
+    [ "$pkg" = "$selfpkg" ] && {
+      echo "   !! Is self, skipping";
+      continue;
+    }
+    date="$(date "+%Y%m%d%H%M%S")";
+    echo "   -- Backup timestamp: $date";
+    echo "   -- Disabling package";
+    disable_pkg "$pkg" || { echo "   !! ERROR: Could not disable package"; continue; };
+    echo "   -- Backing up";
+    backup_data "/data/user/$user/$pkg" "$backupdir/$pkg-$date.tar.gz" || { echo "   !! ERROR: Could not backup"; };
+    echo "   -- Enabling package";
+    enable_pkg "$pkg" || { echo "   !! ERROR: Could not reenable package"; };
+    echo "   -- Done!";
+  done;
+fi;
+
+if [ "$action" = "restore" ]; then
+  echo " ";
+  echo " - Restoring...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " - Package: $pkg";
+    [ "$pkg" = "$selfpkg" ] && {
+      echo "   !! Is self, skipping";
+      continue;
+    }
+    date="$(ls "$backupdir"/$pkg-*.tar.gz 2> /dev/null | sed -e "s|^$backupdir/$pkg-||g" -e "s|.tar.gz$||g" | sort -r | head -n1)";
+    [ -f "$backupdir/$pkg-$date.tar.gz" ] || { echo "   !! ERROR: Could not find a backup"; continue; };
+    echo "   -- Backup timestamp: $date";
+    echo "   -- Disabling package";
+    disable_pkg "$pkg" || { echo "   !! ERROR: Could not disable package"; continue; };
+    echo "   -- Restoring data";
+    restore_data "$backupdir/$pkg-$date.tar.gz" "/data/user/$user/$pkg" || { echo "   !! ERROR: Could not restore"; };
+    echo "   -- Perming package directory";
+    perm_pkg "/data/user/$user/$pkg" || { echo "   !! ERROR: Could not perm directory"; };
+    libdir="$(cat "/data/system/packages.xml" | grep "$pkg" | grep -o "nativeLibraryPath=[^ ]*" | head -n1 | sed -e "s|nativeLibraryPath=||g" -e 's|"||g')";
+    [ -d "$libdir"/* ] && {
+      echo "   -- Linking libs";
+      ln -sf "$libdir"/* "/data/user/$user/$pkg/lib" || { echo "   !! ERROR: Could not link libs"; };
+    }
+    echo "   -- Enabling package";
+    enable_pkg "$pkg" || { echo "   !! ERROR: Could not reenable package"; };
+    echo "   -- Done!";
+  done;
+fi;
+
+if [ "$action" = "list" ]; then
+  echo " ";
+  echo " - Listing...";
+  for pkg in $pkglist; do
+    echo " ";
+    echo " - Package: $pkg";
+    [ "$pkg" = "$selfpkg" ] && {
+      echo "   -- Is self";
+    }
+    date="$(ls "$backupdir"/$pkg-*.tar.gz 2> /dev/null | sed -e "s|^$backupdir/$pkg-||g" -e "s|.tar.gz$||g" | sort -r | head -n1)";
+    [ "$date" ] || date="never";
+    echo "   -- Last backup: $date";
+  done;
+fi;
+
+echo " "
+echo " - Done!";
+echo " ";
+
+exit 0;
