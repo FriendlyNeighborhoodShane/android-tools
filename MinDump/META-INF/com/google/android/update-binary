@@ -28,7 +28,7 @@ for bb in /magisk/.core/busybox /sbin/.core/busybox /sbin/.magisk/busybox; do
 done;
 [ "$magiskbb" ] && export PATH="$magiskbb:$PATH";
 for bin in cat chcon chmod chown dd echo grep ls mkdir ps rm sed; do
-  [ "$(which "$bin")" ] || { ui_print " "; ui_print "FATAL ERROR: No $bin available"; exit 1; }
+  command -v "$bin" >/dev/null || { ui_print " "; ui_print "FATAL ERROR: No $bin available"; exit 1; }
 done;
 
 perm() {

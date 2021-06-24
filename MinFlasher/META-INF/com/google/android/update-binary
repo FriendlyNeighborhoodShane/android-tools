@@ -39,7 +39,7 @@ modname="MinFlasher";
 
 $bootmode || mount /data;
 for bin in chmod echo find grep mkdir rm unzip; do
-  [ "$(which "$bin")" ] || abort "No $bin available";
+  command -v "$bin" >/dev/null || abort "No $bin available";
 done;
 
 filedir="/dev/tmp/$modname";

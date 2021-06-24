@@ -47,7 +47,7 @@ $bootmode || abort "Boot up and flash from Magisk Manager";
 [ -f "/$sysroot/system/build.prop" ] || abort "Could not find a ROM in /$sysroot";
 
 for bin in echo find mkdir rm unzip; do
-  [ "$(which "$bin")" ] || abort "No $bin available";
+  command -v "$bin" >/dev/null || abort "No $bin available";
 done;
 
 ui_print " ";

@@ -39,7 +39,7 @@ ui_print " |       By ShaneTheAwesome        |";
 ui_print " ===================================";
 
 for bin in awk dd echo grep mkdir; do
-  [ "$(which "$bin")" ] || abort "No $bin available";
+  command -v "$bin" >/dev/null || abort "No $bin available";
 done;
 
 abi="$(getprop ro.product.cpu.abi)";
