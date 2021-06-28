@@ -3,8 +3,6 @@
 *A simple, flexible dumper*
 
 ### Links
-* [GitHub](https://github.com/FriendlyNeighborhoodShane/MicroG_Packs)
-* [Support](https://t.me/joinchat/FyFlS0X2D7f6YNvdxhEsfw)
 ### Description
 This zip dumps all your device partitions into an img format using dd.
 

@@ -3,7 +3,6 @@
 *A simple zip to flash all zips*
 
 ### Links
-* [Support](https://t.me/joinchat/FyFlS0X2D7f6YNvdxhEsfw)
 ### Description
 This zip flashes all the zips in a directory. It can be flashed in either recovery or Magisk Manager.
 
