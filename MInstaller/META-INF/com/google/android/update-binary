@@ -107,6 +107,5 @@ sync;
 
 ui_print " ";
 ui_print "Done!";
-ui_print "Join us on Telegram: @NoGooLag";
 ui_print " ";
 exit 0;

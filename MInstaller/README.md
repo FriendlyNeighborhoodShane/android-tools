@@ -3,7 +3,6 @@
 *A simple zip to install all apps*
 
 ### Links
-* [Support](https://t.me/joinchat/FyFlS0X2D7f6YNvdxhEsfw)
 ### Description
 This zip installs all the APKs and APKSs (zipped split apk bundles) in a directory to /data. It can be flashed through Magisk Manager. It supports all Android versions and it supports all architectures.
 
