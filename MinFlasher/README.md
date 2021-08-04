@@ -18,9 +18,9 @@ NOTE: Control by name is not possible in magisk manager, since it copies the zip
 - Add 'silent' to its filename to not show you the output from each of the individual zips on the UI. Otherwise, it shows all output.
 
 - The zip will flash zips from the first directory in which it finds zip files (in decreasing order of preference):
--- Inside the zip in "Zips" folder
--- [Zip's directory]                            (only useable in recovery mode)
--- internal-storage/MinFlasher        (use in recovery mode only if MinFlasher is in this directory)
+  - Inside the zip in "Zips" folder
+  - [Zip's directory]                            (only useable in recovery mode)
+  - internal-storage/MinFlasher        (use in recovery mode only if MinFlasher is in this directory)
 
 - You can control the order in which it flashes zips by name. It flashes all zips alphabetically, in order ")-.[0-9]_[A-Z][a-z]("
 

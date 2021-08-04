@@ -11,8 +11,9 @@ It contains a default exclude list which I guess you wouldn't want to dump like 
 If flashed from recovery, it will take config files from its own directory, make a dumps directory in there and dump everything in it. If flashed from Magisk Manager, it will make a MinDump directory in your internal storage, take configs from there and make a dumps directory to dump stuff.
 
 Config files are:
-  -- mindump-include.txt
-  -- mindump-exclude.txt
+- mindump-include.txt
+- mindump-exclude.txt
+
 A simle list of partitions you want to include or exclude from operation, separated with spaces, newlines or tabs. Only one of them is processed and include takes priority over exclude.
 
 For support:
