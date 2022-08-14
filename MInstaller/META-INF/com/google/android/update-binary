@@ -16,8 +16,6 @@ $bootmode && ui_print() { echo "$1" >&3; } || ui_print() { echo -e "ui_print $1\
 
 log() { echo "$1"; }
 
-$bootmode || mount -o bind /dev/urandom /dev/random;
-
 abort() {
   ui_print " ";
   ui_print "!!! FATAL ERROR: $1";
@@ -41,10 +39,6 @@ filedir="/data/local/tmp";
 moddir="/data/media/0/$modname";
 
 $bootmode || abort "Boot up and flash from Magisk Manager";
-
-[ -e "/system/system/build.prop" ] && sysroot="system";
-[ -e "/system_root/system/build.prop" ] && sysroot="system_root";
-[ -f "/$sysroot/system/build.prop" ] || abort "Could not find a ROM in /$sysroot";
 
 for bin in echo find mkdir rm unzip; do
   command -v "$bin" >/dev/null || abort "No $bin available";
@@ -97,10 +91,6 @@ done;
 
 ui_print " ";
 ui_print "Installation process complete";
-
-ui_print " ";
-ui_print "Unmounting...";
-$bootmode || { [ "$sysroot" ] && umount /$sysroot || umount /system; }
 
 rm -rf "$filedir";
 sync;
