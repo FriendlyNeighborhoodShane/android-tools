@@ -75,8 +75,8 @@ find "$apkdir" -maxdepth 1 -type f -name "*.apk" -o -name "*.apks" | sort -f | w
       rm -rf "$filedir";
       mkdir -p "$filedir";
       unzip -o "$apk" -d "$filedir";
-      [ "$(echo "$filedir/*.apk")" ] || { log "  !!No APKs found"; ui_print "  !!Installation failed"; continue; }
-      pm install $filedir/*.apk;
+      [ -f "$( (set -- "$filedir"/*.apk; echo "$1";) )" ] || { log "  !!No APKs found"; ui_print "  !!Installation failed"; continue; }
+      pm install "$filedir"/*.apk;
     ;;
   esac;
 
